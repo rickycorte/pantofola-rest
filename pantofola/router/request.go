@@ -15,6 +15,8 @@ type Request struct {
 	isHandled    bool
 }
 
+//*********************************************************************************************************************
+
 // Reply writes a responce to the request
 func (req *Request) Reply(code int, headers map[string]string, body string) {
 

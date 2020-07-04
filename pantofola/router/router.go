@@ -5,28 +5,21 @@ import (
 	"regexp"
 )
 
+// RequestHandler is a direct function call that handles a http request
+type RequestHandler func(*Request)
+
 // RequestRouter defines rounter handles should be able to run
 type RequestRouter interface {
 	handle(r *Request)
 }
 
-// NextMiddeleware is the function that should be run by a middleware with it wants to proceed in chain
-type NextMiddleware func()
-
-// Middeleware is a chain component that definse a path execution mode
-type Middleware interface {
-	run(r *Request, next NextMiddleware)
-}
-
-// RequestHandler is a direct function call that handles a http request
-type RequestHandler func(*Request)
-
 // this structs holds route the pattern to match
 // and the corresponding handler
 type route struct {
-	pattern   *regexp.Regexp
-	subrouter RequestRouter
-	handler   RequestHandler
+	pattern         *regexp.Regexp
+	subrouter       RequestRouter
+	handler         RequestHandler
+	middlewareChain *MiddlewareChain
 }
 
 // Router type holds all the data to handle and correctly route requests to direct
@@ -75,11 +68,12 @@ func (router *Router) SetFallbackHandler(handler RequestHandler) {
 }
 
 // MakeChain creates a middleware chain before executing the main handler
-func (router *Router) MakeChain(pattern string, middleware []Middleware, handler RequestHandler) {
-	if middleware == nil {
-		router.AddHandler(pattern, handler)
-	}
+func (router *Router) MakeChain(pattern string, middlewares []Middleware, handler RequestHandler) {
 
+	r := route{pattern: regexp.MustCompile("^(" + pattern + ")(/.*)?$"),
+		subrouter: nil, handler: nil,
+		middlewareChain: MakeMiddlewareChain(middlewares, handler)}
+	router.routes = append(router.routes, r)
 }
 
 // handle a request
@@ -113,7 +107,12 @@ func (router *Router) handle(r *Request) {
 	//TODO: support paramters w/ caputure groups
 	for _, sr := range router.routes {
 		if matches := sr.pattern.FindStringSubmatch(r.relativePath); len(matches) > 0 {
-			sr.handler(r)
+			if sr.middlewareChain == nil {
+				sr.handler(r)
+			} else {
+				sr.middlewareChain.Next(r)
+			}
+
 			return
 		}
 	}
