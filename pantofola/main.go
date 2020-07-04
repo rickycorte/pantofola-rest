@@ -11,7 +11,7 @@ func hello(r *router.Request) {
 }
 
 func rippe(r *router.Request) {
-	r.Reply(200, nil, "Rip this is the default handler!")
+	r.Reply(404, nil, "Rip this is the default handler!")
 }
 
 func apiA(r *router.Request) {
@@ -45,11 +45,13 @@ func main() {
 	rout.AddHandler("/hello", hello)
 	rout.SetFallbackHandler(rippe)
 
-	rout.MakeChain("/shortChain", []router.Middleware{middlewareA}, hello)
+	rout.UseMiddleware(router.WriteReqMetaMiddleware)
 
-	rout.MakeChain("/longChain", []router.Middleware{middlewareA, middlewareB}, hello)
+	rout.AddHandlerChain("/shortChain", []router.Middleware{middlewareA}, hello)
 
-	rout.MakeChain("/evilChain", []router.Middleware{middlewareA, ripMiddleware}, hello)
+	rout.AddHandlerChain("/longChain", []router.Middleware{middlewareA, middlewareB}, hello)
+
+	rout.AddHandlerChain("/evilChain", []router.Middleware{middlewareA, ripMiddleware}, hello)
 
 	subrouter := router.MakeRouter()
 	subrouter.AddHandler("/a", apiA)

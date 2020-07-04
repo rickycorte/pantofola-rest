@@ -18,7 +18,6 @@ type RequestRouter interface {
 type route struct {
 	pattern         *regexp.Regexp
 	subrouter       RequestRouter
-	handler         RequestHandler
 	middlewareChain *MiddlewareChain
 }
 
@@ -28,13 +27,17 @@ type Router struct {
 	subRouters      []route
 	routes          []route
 	fallbackHandler RequestHandler
+	middlewareChain *MiddlewareChain
+	middlewares     []Middleware
 }
 
 //*********************************************************************************************************************
 
 // MakeRouter creates a new router and initialize its values
 func MakeRouter() *Router {
-	return &Router{subRouters: make([]route, 0), routes: make([]route, 0), fallbackHandler: nil}
+	r := &Router{subRouters: make([]route, 0), routes: make([]route, 0), fallbackHandler: nil}
+	r.middlewareChain = MakeMiddlewareChain(nil, r.handle) // setup chain to be able to execute handle operations
+	return r
 }
 
 // AddSubRouter adds a new subrouter to the current roter with the desired prefix.
@@ -47,7 +50,7 @@ func MakeRouter() *Router {
 func (router *Router) AddSubRouter(pattern string, subRouter RequestRouter) {
 
 	// match strings like /test /test/sadad
-	r := route{pattern: regexp.MustCompile("^(" + pattern + ")(/.*)?$"), subrouter: subRouter, handler: nil}
+	r := route{pattern: regexp.MustCompile("^(" + pattern + ")(/.*)?$"), subrouter: subRouter}
 	router.subRouters = append(router.subRouters, r)
 
 }
@@ -56,7 +59,14 @@ func (router *Router) AddSubRouter(pattern string, subRouter RequestRouter) {
 // this function is used to add normal handlers that are not router and actually make a reply
 func (router *Router) AddHandler(pattern string, handler RequestHandler) {
 
-	r := route{pattern: regexp.MustCompile("^(" + pattern + ")(/.*)?$"), subrouter: nil, handler: handler}
+	router.AddHandlerChain(pattern, nil, handler)
+}
+
+// AddHandlerChain creates a middleware chain before executing the main handler
+func (router *Router) AddHandlerChain(pattern string, middlewares []Middleware, handler RequestHandler) {
+
+	r := route{pattern: regexp.MustCompile("^(" + pattern + ")(/.*)?$"), subrouter: nil,
+		middlewareChain: MakeMiddlewareChain(middlewares, handler)}
 	router.routes = append(router.routes, r)
 }
 
@@ -67,13 +77,16 @@ func (router *Router) SetFallbackHandler(handler RequestHandler) {
 	router.fallbackHandler = handler
 }
 
-// MakeChain creates a middleware chain before executing the main handler
-func (router *Router) MakeChain(pattern string, middlewares []Middleware, handler RequestHandler) {
+// UseMiddleware adds a new global router middleware that will be applied to every route and subrouter
+// this gives great flexibilty and power
+func (router *Router) UseMiddleware(middleware Middleware) {
+	if middleware == nil {
+		return
+	}
 
-	r := route{pattern: regexp.MustCompile("^(" + pattern + ")(/.*)?$"),
-		subrouter: nil, handler: nil,
-		middlewareChain: MakeMiddlewareChain(middlewares, handler)}
-	router.routes = append(router.routes, r)
+	router.middlewares = append(router.middlewares, middleware)
+	router.middlewareChain = MakeMiddlewareChain(router.middlewares, router.handle)
+
 }
 
 // handle a request
@@ -107,12 +120,7 @@ func (router *Router) handle(r *Request) {
 	//TODO: support paramters w/ caputure groups
 	for _, sr := range router.routes {
 		if matches := sr.pattern.FindStringSubmatch(r.relativePath); len(matches) > 0 {
-			if sr.middlewareChain == nil {
-				sr.handler(r)
-			} else {
-				sr.middlewareChain.Next(r)
-			}
-
+			sr.middlewareChain.Next(r)
 			return
 		}
 	}
@@ -128,6 +136,7 @@ func (router *Router) handle(r *Request) {
 // to enable the router to handle direct server calls
 func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	router.handle(MakeRequest(w, r))
+	//router.handle(MakeRequest(w, r))
+	router.middlewareChain.Next(MakeRequest(w, r))
 
 }

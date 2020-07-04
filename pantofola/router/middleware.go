@@ -1,5 +1,10 @@
 package router
 
+import (
+	"log"
+	"time"
+)
+
 // Middleware is a chain component that definse a path execution mode
 type Middleware func(r *Request, next *MiddlewareChain)
 
@@ -52,4 +57,14 @@ func MakeMiddlewareChain(middlewares []Middleware, handler RequestHandler) *Midd
 	last.next = &MiddlewareChain{handler: handler}
 
 	return first // return head of list
+}
+
+//*********************************************************************************************************************
+
+// WriteReqMetaMiddleware prints a compact formateted log about received http requests
+func WriteReqMetaMiddleware(r *Request, next *MiddlewareChain) {
+	start := time.Now()
+	next.Next(r)
+	elapsed := time.Since(start)
+	log.Printf("HTTP %s %s - %d in %dms\n", r.reader.Method, r.reader.URL, r.status, elapsed.Milliseconds())
 }
