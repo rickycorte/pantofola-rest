@@ -42,7 +42,7 @@ func MakeMiddlewareChain(middlewares []Middleware, handler RequestHandler) *Midd
 	var first, last *MiddlewareChain
 	for i := 0; i < len(middlewares); i++ {
 
-		mc := &MiddlewareChain{current: middlewares[i], next: nil, handler: handler}
+		mc := &MiddlewareChain{current: middlewares[i], next: nil, handler: nil}
 
 		if i == 0 {
 			first = mc // the first must be saved
@@ -61,8 +61,8 @@ func MakeMiddlewareChain(middlewares []Middleware, handler RequestHandler) *Midd
 
 //*********************************************************************************************************************
 
-// WriteRequestBaseInfoMiddleware prints a compact formateted log about received http requests
-func WriteRequestBaseInfoMiddleware(r *Request, next *MiddlewareChain) {
+// LogRequestInfoMiddleware prints a compact formateted log about received http requests
+func LogRequestInfoMiddleware(r *Request, next *MiddlewareChain) {
 	start := time.Now()
 	next.Next(r)
 	elapsed := time.Since(start)

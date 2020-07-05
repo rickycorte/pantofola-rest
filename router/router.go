@@ -36,7 +36,7 @@ type Router struct {
 // MakeRouter creates a new router and initialize its values
 func MakeRouter() *Router {
 	r := &Router{subRouters: make([]route, 0), routes: make([]route, 0), fallbackHandler: nil}
-	r.middlewareChain = MakeMiddlewareChain(nil, r.handle) // setup chain to be able to execute handle operations
+	r.middlewareChain = MakeMiddlewareChain(nil, r.searchRouter) // setup chain to be able to execute handle operations
 	return r
 }
 
@@ -85,15 +85,15 @@ func (router *Router) UseMiddleware(middleware Middleware) {
 	}
 
 	router.middlewares = append(router.middlewares, middleware)
-	router.middlewareChain = MakeMiddlewareChain(router.middlewares, router.handle)
+	router.middlewareChain = MakeMiddlewareChain(router.middlewares, router.searchRouter)
 
 }
 
-// handle a request
+// searchRouter a request
 // first check subrouters and then proced to fixed routes
 // after all the checks return true if the route was handled and false in not
 // this is used to understand then the process should stop
-func (router *Router) handle(r *Request) {
+func (router *Router) searchRouter(r *Request) {
 
 	if r.relativePath == "" {
 		r.relativePath = r.reader.URL.Path
@@ -132,11 +132,13 @@ func (router *Router) handle(r *Request) {
 
 }
 
+func (router *Router) handle(r *Request) {
+	router.middlewareChain.Next(r)
+}
+
 // ServeHTTP is used to implement http.Handler interface
 // to enable the router to handle direct server calls
 func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	//router.handle(MakeRequest(w, r))
 	router.middlewareChain.Next(MakeRequest(w, r))
-
 }
