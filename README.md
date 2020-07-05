@@ -1,3 +1,4 @@
+
 # Pantofola REST
 
 Simple and fast framework to create awesome REST APIs in seconds!
@@ -7,6 +8,10 @@ Simple and fast framework to create awesome REST APIs in seconds!
 - Simple routing
 - Subrouters 
 - Middleware chains
+
+![Go Test](https://github.com/rickycorte/pantofola-rest/workflows/Go/badge.svg)
+[![codecov](https://codecov.io/gh/rickycorte/pantofola-rest/branch/master/graph/badge.svg)](https://codecov.io/gh/rickycorte/pantofola-rest)
+
 
 
 # Example API
