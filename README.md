@@ -1,3 +1,6 @@
+![Go Test](https://github.com/rickycorte/pantofola-rest/workflows/Go%20Test/badge.svg)
+[![codecov](https://codecov.io/gh/rickycorte/pantofola-rest/branch/master/graph/badge.svg)](https://codecov.io/gh/rickycorte/pantofola-rest)
+[![Go Report Card](https://goreportcard.com/badge/github.com/rickycorte/pantofola-rest)](https://goreportcard.com/report/github.com/rickycorte/pantofola-rest)
 
 # Pantofola REST
 
@@ -8,11 +11,6 @@ Simple and fast framework to create awesome REST APIs in seconds!
 - Simple routing
 - Subrouters 
 - Middleware chains
-
-![Go Test](https://github.com/rickycorte/pantofola-rest/workflows/Go/badge.svg)
-[![codecov](https://codecov.io/gh/rickycorte/pantofola-rest/branch/master/graph/badge.svg)](https://codecov.io/gh/rickycorte/pantofola-rest)
-
-
 
 # Example API
 
