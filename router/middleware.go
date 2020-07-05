@@ -61,8 +61,8 @@ func MakeMiddlewareChain(middlewares []Middleware, handler RequestHandler) *Midd
 
 //*********************************************************************************************************************
 
-// WriteReqMetaMiddleware prints a compact formateted log about received http requests
-func WriteReqMetaMiddleware(r *Request, next *MiddlewareChain) {
+// WriteRequestBaseInfoMiddleware prints a compact formateted log about received http requests
+func WriteRequestBaseInfoMiddleware(r *Request, next *MiddlewareChain) {
 	start := time.Now()
 	next.Next(r)
 	elapsed := time.Since(start)
