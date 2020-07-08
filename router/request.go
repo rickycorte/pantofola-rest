@@ -29,7 +29,11 @@ type Request struct {
 	writer       http.ResponseWriter
 	relativePath string
 	isHandled    bool
+	params       map[string]string
 }
+
+// RequestHandler is a direct function call that handles a http request
+type RequestHandler func(*Request)
 
 //*********************************************************************************************************************
 
@@ -48,6 +52,22 @@ func (req *Request) Reply(code int, headers map[string]string, body string) {
 	}
 
 	fmt.Fprint(req.writer, body)
+}
+
+func (req *Request) GetParameter(name string) string {
+	if req.params != nil {
+		return req.params[name]
+	}
+	return ""
+}
+
+func (req *Request) SetParameter(name, data string) {
+
+	if req.params == nil {
+		req.params = make(map[string]string)
+	}
+
+	req.params[name] = data
 }
 
 // MakeRequest from go internal structs

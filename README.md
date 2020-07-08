@@ -1,6 +1,7 @@
 ![Go Test](https://github.com/rickycorte/pantofola-rest/workflows/Go%20Test/badge.svg)
 [![codecov](https://codecov.io/gh/rickycorte/pantofola-rest/branch/master/graph/badge.svg)](https://codecov.io/gh/rickycorte/pantofola-rest)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rickycorte/pantofola-rest)](https://goreportcard.com/report/github.com/rickycorte/pantofola-rest)
+ [![GoDoc](https://godoc.org/github.comrickycorte/pantofola-rest?status.svg)](http://godoc.org/github.com/rickycorte/pantofola-rest)
 
 # Pantofola REST
 

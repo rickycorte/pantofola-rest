@@ -52,7 +52,7 @@ func (mc *MiddlewareChain) Next(req *Request) {
 // passing a nil middleware list will produce a chain that is the same as directly running the handler
 func MakeMiddlewareChain(middlewares []Middleware, handler RequestHandler) *MiddlewareChain {
 	if middlewares == nil {
-		return &MiddlewareChain{handler: handler}
+		return &MiddlewareChain{current: nil, next: nil, handler: handler}
 	}
 
 	var first, last *MiddlewareChain
@@ -79,8 +79,8 @@ func MakeMiddlewareChain(middlewares []Middleware, handler RequestHandler) *Midd
 
 // LogRequestInfoMiddleware prints a compact formateted log about received http requests
 func LogRequestInfoMiddleware(r *Request, next *MiddlewareChain) {
-	start := time.Now()
+	start := time.Now().UnixNano()
 	next.Next(r)
-	elapsed := time.Since(start)
-	log.Printf("HTTP %s %s - %d in %dms\n", r.reader.Method, r.reader.URL, r.status, elapsed.Milliseconds())
+	end := time.Now().UnixNano()
+	log.Printf("HTTP %s %s - %d in %dus\n", r.reader.Method, r.reader.URL, r.status, (end-start)/1000)
 }

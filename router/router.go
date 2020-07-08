@@ -17,143 +17,240 @@
 package router
 
 import (
+	"log"
 	"net/http"
 	"regexp"
 )
 
-// RequestHandler is a direct function call that handles a http request
-type RequestHandler func(*Request)
-
-// RequestRouter defines rounter handles should be able to run
-type RequestRouter interface {
-	handle(r *Request)
-}
-
-// this structs holds route the pattern to match
-// and the corresponding handler
-type route struct {
-	pattern         *regexp.Regexp
-	subrouter       RequestRouter
-	middlewareChain *MiddlewareChain
-}
+const (
+	httpGET          = 0
+	httpPOST         = 1
+	httpPUT          = 2
+	httpPATCH        = 3
+	httpDELETE       = 4
+	httpTotalMethods = 5
+)
 
 // Router type holds all the data to handle and correctly route requests to direct
 // handler or other subrouters
+type pathNode struct {
+	staticRoutes          map[string]*pathNode
+	parameterHandler      *pathNode
+	directMiddlewareChain *MiddlewareChain
+	parameterName         string
+}
+
+// Router is the main block of the api and hold all registered paths
+// this shoul be used instead of the default server mux
 type Router struct {
-	subRouters      []route
-	routes          []route
-	fallbackHandler RequestHandler
-	middlewareChain *MiddlewareChain
+	pathTrees       [httpTotalMethods]*pathNode
 	middlewares     []Middleware
+	middlewareChain *MiddlewareChain
+	index           RequestHandler
+	fallback        RequestHandler
 }
 
 //*********************************************************************************************************************
 
-// MakeRouter creates a new router and initialize its values
-func MakeRouter() *Router {
-	r := &Router{subRouters: make([]route, 0), routes: make([]route, 0), fallbackHandler: nil}
-	r.middlewareChain = MakeMiddlewareChain(nil, r.searchRouter) // setup chain to be able to execute handle operations
-	return r
+// generate a tree from a path and a method
+func (r *Router) setPath(method int, path string, middlewares []Middleware, handler RequestHandler) {
+
+	// split path in /*** data
+	regex := regexp.MustCompile(`((/:?[a-zA-Z0-9]+))`)
+	matches := regex.FindAllString(path, -1)
+
+	//log.Println("Parsing " + path)
+
+	currentNode := r.pathTrees[method]
+
+	// create first node if not exist
+	if currentNode == nil {
+		currentNode = &pathNode{}
+		r.pathTrees[method] = currentNode
+	}
+
+	for i, v := range matches {
+
+		// check if this is a parameter
+		if len(v) > 2 && v[0:2] == "/:" {
+
+			if currentNode.parameterHandler != nil && currentNode.parameterHandler.parameterName != v[2:] {
+				panic("Paramter name mismatch for route " + path)
+			}
+			//check if there is no handler
+			if currentNode.parameterHandler == nil {
+				currentNode.parameterHandler = &pathNode{parameterName: v[2:]}
+				//log.Println("Created parameter node: " + v[2:])
+			}
+			currentNode = currentNode.parameterHandler
+			//log.Println("Added paramter path node: " + v[2:])
+
+		} else {
+			// map need to be generated
+			if currentNode.staticRoutes == nil {
+				currentNode.staticRoutes = make(map[string]*pathNode)
+			}
+			// static part of path
+			existNode := currentNode.staticRoutes[v]
+			// check if exist
+			if existNode == nil {
+				currentNode.staticRoutes[v] = &pathNode{}
+				//log.Println("Created node: " + v)
+			}
+
+			currentNode = currentNode.staticRoutes[v]
+			//log.Println("Added path node: " + v)
+		}
+
+		// time to assign the handler only to last node
+		if i == len(matches)-1 {
+			currentNode.directMiddlewareChain = MakeMiddlewareChain(middlewares, handler)
+		}
+	}
+
 }
 
-// AddSubRouter adds a new subrouter to the current roter with the desired prefix.
-// For example we want to add all api handlers under the same prefix without writing it every time
-// we just need to create a new router that handles all realtive paths
-// and the pass is as a subrouter
-//
-// Example: we create a router that handles /test and /getme
-// and set it as a subrouter of /api, with this we will obtain two handlers /api/test /api/getme
-func (router *Router) AddSubRouter(pattern string, subRouter RequestRouter) {
-
-	// match strings like /test /test/sadad
-	r := route{pattern: regexp.MustCompile("^(" + pattern + ")(/.*)?$"), subrouter: subRouter}
-	router.subRouters = append(router.subRouters, r)
-
+// convert method from string into a mapped int
+func methodToInt(method string) int {
+	switch method {
+	case "GET":
+		return httpGET
+	case "POST":
+		return httpPOST
+	case "PUT":
+		return httpPUT
+	case "PATCH":
+		return httpPATCH
+	case "delete":
+		return httpDELETE
+	default:
+		return -1
+	}
 }
 
-// AddHandler create a standard relative handler to the Request relative path
-// this function is used to add normal handlers that are not router and actually make a reply
-func (router *Router) AddHandler(pattern string, handler RequestHandler) {
+// parse a request url and call the right handler
+func (r *Router) executeHandler(req *Request) {
 
-	router.AddHandlerChain(pattern, nil, handler)
-}
-
-// AddHandlerChain creates a middleware chain before executing the main handler
-func (router *Router) AddHandlerChain(pattern string, middlewares []Middleware, handler RequestHandler) {
-
-	r := route{pattern: regexp.MustCompile("^(" + pattern + ")(/.*)?$"), subrouter: nil,
-		middlewareChain: MakeMiddlewareChain(middlewares, handler)}
-	router.routes = append(router.routes, r)
-}
-
-// SetFallbackHandler sets the router to use a custom handler if nothings is found
-// by default the fallback route is nill and nothing will happen if a query fails
-func (router *Router) SetFallbackHandler(handler RequestHandler) {
-
-	router.fallbackHandler = handler
-}
-
-// UseMiddleware adds a new global router middleware that will be applied to every route and subrouter
-// this gives great flexibilty and power
-func (router *Router) UseMiddleware(middleware Middleware) {
-	if middleware == nil {
+	url := req.reader.URL.Path
+	method := methodToInt(req.reader.Method)
+	if method == -1 {
+		//TODO: custimuze error function
+		req.Reply(500, nil, "Unsupported method")
+		log.Fatal("Unsupported method: " + req.reader.Method)
 		return
 	}
 
-	router.middlewares = append(router.middlewares, middleware)
-	router.middlewareChain = MakeMiddlewareChain(router.middlewares, router.searchRouter)
+	//log.Println("Executing: " + req.reader.Method + " " + url)
 
-}
-
-// searchRouter a request
-// first check subrouters and then proced to fixed routes
-// after all the checks return true if the route was handled and false in not
-// this is used to understand then the process should stop
-func (router *Router) searchRouter(r *Request) {
-
-	if r.relativePath == "" {
-		r.relativePath = r.reader.URL.Path
+	// return index page
+	if len(url) == 0 || url == "/" {
+		r.index(req)
+		return
 	}
 
-	// search subrouters
-	for _, sr := range router.subRouters {
-		if matches := sr.pattern.FindStringSubmatch(r.relativePath); len(matches) > 1 {
-			// one group means have a path like /test
-			if len(matches) == 1 {
-				r.relativePath = "/"
-			} else { // we have a subpath that is set in group 2
-				r.relativePath = matches[2]
+	currentNode := r.pathTrees[method]
+	lastSlash := 0
+	// start from one to skip the first /
+	for i := 1; i < len(url); i++ {
+		// do something only when a / is found (or end of url is reached)
+		if url[i] == '/' || i == len(url)-1 {
+			var sch string
+			// grab the paramter from the url with a slice
+			if i != len(url)-1 {
+				sch = url[lastSlash:i]
+			} else {
+				sch = url[lastSlash:]
 			}
-			sr.subrouter.handle(r)
-			// check if handled
-			if r.isHandled {
+			//log.Print("Searching node: " + sch)
+
+			// first search static nodes
+			var staticNode *pathNode
+			if currentNode.staticRoutes != nil {
+				staticNode = currentNode.staticRoutes[sch]
+			} else {
+				staticNode = nil
+			}
+
+			if staticNode != nil {
+				currentNode = staticNode
+				//log.Println("Moved to static node: " + sch)
+			} else if currentNode.parameterHandler != nil { // then check if the value could be a paramter
+				currentNode = currentNode.parameterHandler
+				//log.Println("Added new parameter: " + sch[1:])
+				req.SetParameter(currentNode.parameterName, sch[1:])
+			} else { // in nothing is found then we can print a not found message
+				r.fallback(req) // not found any possible match
 				return
+				//log.Println("Not found: " + sch[1:])
 			}
+
+			lastSlash = i // update last slash pos after operations
 		}
 	}
 
-	//search handlers
-	//TODO: support paramters w/ caputure groups
-	for _, sr := range router.routes {
-		if matches := sr.pattern.FindStringSubmatch(r.relativePath); len(matches) > 0 {
-			sr.middlewareChain.Next(r)
-			return
-		}
+	// when we are here we are in the last node of the url so we can execute the action
+	if currentNode.directMiddlewareChain != nil {
+		currentNode.directMiddlewareChain.Next(req)
+	} else {
+		log.Fatal("Missing direct handler for " + url)
 	}
-
-	// nothing found fallback to default route if not nill
-	if router.fallbackHandler != nil {
-		router.fallbackHandler(r)
-	}
-
 }
 
-func (router *Router) handle(r *Request) {
-	router.middlewareChain.Next(r)
+// default error page
+func defaultFallback(req *Request) {
+	req.Reply(404, nil, "Not found")
 }
 
-// ServeHTTP is used to implement http.Handler interface
-// to enable the router to handle direct server calls
+// default index page
+func defaultIndex(req *Request) {
+	req.Reply(200, nil, "Welcome to Pantofola-Rest!")
+}
+
+//*********************************************************************************************************************
+
+// MakeRouter creates a new router with no middleware and with default index and error pages
+func MakeRouter() *Router {
+	r := &Router{fallback: defaultFallback, index: defaultIndex}
+	r.middlewareChain = MakeMiddlewareChain(nil, r.executeHandler)
+	return r
+}
+
+// Use adds a global middleware to the router
+func (r *Router) Use(middleware Middleware) {
+	r.middlewares = append(r.middlewares, middleware)
+	r.middlewareChain = MakeMiddlewareChain(r.middlewares, r.executeHandler)
+}
+
+// SetFallback sets the default error page used when a element is not found
+func (r *Router) SetFallback(handler RequestHandler) {
+	r.fallback = handler
+}
+
+// SetIndex sets the default error page
+func (r *Router) SetIndex(handler RequestHandler) {
+	r.index = handler
+}
+
+func (r *Router) GET(path string, middlewares []Middleware, handler RequestHandler) {
+	r.setPath(httpGET, path, middlewares, handler)
+}
+
+func (r *Router) POST(path string, middlewares []Middleware, handler RequestHandler) {
+	r.setPath(httpPOST, path, middlewares, handler)
+}
+
+func (r *Router) PUT(path string, middlewares []Middleware, handler RequestHandler) {
+	r.setPath(httpPUT, path, middlewares, handler)
+}
+
+func (r *Router) PATCH(path string, middlewares []Middleware, handler RequestHandler) {
+	r.setPath(httpPATCH, path, middlewares, handler)
+}
+
+func (r *Router) DELETE(path string, middlewares []Middleware, handler RequestHandler) {
+	r.setPath(httpDELETE, path, middlewares, handler)
+}
+
 func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	router.middlewareChain.Next(MakeRequest(w, r))

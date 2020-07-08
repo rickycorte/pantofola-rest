@@ -28,6 +28,7 @@ func middleware300(r *Request, next *MiddlewareChain) {
 
 	r.writer.Write([]byte("300|"))
 	next.Next(r)
+	r.writer.Write([]byte("300|"))
 }
 
 // this middleware writes 400| in body
@@ -35,6 +36,7 @@ func middleware400(r *Request, next *MiddlewareChain) {
 
 	r.writer.Write([]byte("400|"))
 	next.Next(r)
+	r.writer.Write([]byte("400|"))
 }
 
 // this middleware stops the chains and return 500 code
@@ -50,62 +52,6 @@ func simplehandler(r *Request) {
 	r.writer.Write([]byte("200|"))
 	r.status = 200
 	r.isHandled = true
-}
-
-func TestMakeMiddlewareChainWithNoMiddelwares(t *testing.T) {
-
-	chain := MakeMiddlewareChain(nil, simplehandler)
-
-	if chain.current != nil {
-		t.Errorf("Middleware chain that contains the handler must not have a current middleware to run")
-	}
-
-	if chain.next != nil {
-		t.Errorf("Middleware chain that contains the handler must not have a next middleware to run")
-	}
-
-	if chain.handler == nil {
-		t.Errorf("Mistached handler.")
-	}
-
-}
-
-func TestMakeMiddlewareChainWithMultipleMiddlewares(t *testing.T) {
-	middlewares := []Middleware{middleware300, middleware300, middleware400}
-
-	chain := MakeMiddlewareChain(middlewares, simplehandler)
-
-	// check non last middlewares
-	for i := 0; i < len(middlewares); i++ {
-
-		if chain.current == nil {
-			t.Errorf("Mistached current middlware at index %v", i)
-		}
-
-		if chain.next == nil {
-			t.Errorf("Mistached next middlwareChain at index %v", i)
-		}
-
-		if chain.handler != nil {
-			t.Errorf("Middleware at index %v must not have an handler because only the last one is allowed to use it", i)
-		}
-
-		chain = chain.next
-	}
-
-	// last middleware must have no next and current
-	if chain.current != nil {
-		t.Errorf("Middleware chain that contains the handler must not have a current middleware to run")
-	}
-
-	if chain.next != nil {
-		t.Errorf("Middleware chain that contains the handler must not have a next middleware to run")
-	}
-
-	if chain.handler == nil {
-		t.Errorf("Mistached handler.")
-	}
-
 }
 
 func TestNextExecutionWithNoKiller(t *testing.T) {
@@ -124,7 +70,7 @@ func TestNextExecutionWithNoKiller(t *testing.T) {
 	body, _ := ioutil.ReadAll(recorder.Body)
 	sbody := string(body)
 	// to understand this string see what the middleware do
-	const expected = "300|400|300|200|"
+	const expected = "300|400|300|200|300|400|300|"
 	if sbody != expected {
 		t.Errorf("Mismatched execution order of the chain. Expected: %s, got %s", expected, sbody)
 	}
@@ -146,7 +92,7 @@ func TestNextExecutionWithKiller(t *testing.T) {
 
 	chain.Next(r) // run complete chain
 
-	const expected = "300|500|"
+	const expected = "300|500|300|"
 
 	body, _ := ioutil.ReadAll(recorder.Body)
 	sbody := string(body)

@@ -71,9 +71,9 @@ func TestRouter(t *testing.T) {
 	router.SetFallbackHandler(otherhandler)
 
 	runRequest(router, "/ah", "200|", t)
-	runRequest(router, "/ah2", "200|", t)        // same as vanilla handler becase no middleware is passed
-	runRequest(router, "/ch", "300|400|200|", t) // middleware action
-	runRequest(router, "/not-found", "404|", t)  // fallback
+	runRequest(router, "/ah2", "200|", t)                // same as vanilla handler becase no middleware is passed
+	runRequest(router, "/ch", "300|400|200|400|300|", t) // middleware action
+	runRequest(router, "/not-found", "404|", t)          // fallback
 
 }
 
@@ -95,8 +95,8 @@ func TestRouterWithSubRoutingAndMiddlwares(t *testing.T) {
 
 	runRequest(router, "/ah", "200|", t) // fallback on main
 
-	runRequest(router, "/api/ah", "api|200|", t)         // same as vanilla handler becase no middleware is passed
-	runRequest(router, "/api/ch", "api|300|400|200|", t) // middleware action
-	runRequest(router, "/api/not-found", "api|404|", t)  // fallback
+	runRequest(router, "/api/ah", "api|200|", t)                 // same as vanilla handler becase no middleware is passed
+	runRequest(router, "/api/ch", "api|300|400|200|400|300|", t) // middleware action
+	runRequest(router, "/api/not-found", "api|404|", t)          // fallback
 
 }
