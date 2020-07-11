@@ -17,9 +17,9 @@
 package router
 
 import (
+	"fmt"
 	"log"
 	"net/http"
-	"regexp"
 )
 
 const (
@@ -31,33 +31,31 @@ const (
 	httpTotalMethods = 5
 )
 
+// RequestHandler2 is a direct function call that handles a http request
+type RequestHandler2 func(http.ResponseWriter, *http.Request, map[string]string)
+
 // Router type holds all the data to handle and correctly route requests to direct
 // handler or other subrouters
 type pathNode struct {
-	staticRoutes          map[string]*pathNode
-	parameterHandler      *pathNode
-	directMiddlewareChain *MiddlewareChain
-	parameterName         string
+	staticRoutes     map[string]*pathNode
+	parameterHandler *pathNode
+	handler          RequestHandler2
+	parameterName    string
 }
 
 // Router is the main block of the api and hold all registered paths
 // this shoul be used instead of the default server mux
 type Router struct {
-	pathTrees       [httpTotalMethods]*pathNode
-	middlewares     []Middleware
-	middlewareChain *MiddlewareChain
-	index           RequestHandler
-	fallback        RequestHandler
+	pathTrees    [httpTotalMethods]*pathNode
+	index        RequestHandler2
+	fallback     RequestHandler2
+	maxParamters int
 }
 
 //*********************************************************************************************************************
 
 // generate a tree from a path and a method
-func (r *Router) setPath(method int, path string, middlewares []Middleware, handler RequestHandler) {
-
-	// split path in /*** data
-	regex := regexp.MustCompile(`((/:?[a-zA-Z0-9]+))`)
-	matches := regex.FindAllString(path, -1)
+func (r *Router) setPath(method int, path string, handler RequestHandler2) {
 
 	//log.Println("Parsing " + path)
 
@@ -69,94 +67,125 @@ func (r *Router) setPath(method int, path string, middlewares []Middleware, hand
 		r.pathTrees[method] = currentNode
 	}
 
-	for i, v := range matches {
+	if method == -1 {
+		panic("Unsupported method for path " + path)
+	}
 
-		// check if this is a parameter
-		if len(v) > 2 && v[0:2] == "/:" {
+	lastSlash := 0
+	paramCount := 0
+	pathSize := len(path)
 
-			if currentNode.parameterHandler != nil && currentNode.parameterHandler.parameterName != v[2:] {
-				panic("Paramter name mismatch for route " + path)
-			}
-			//check if there is no handler
-			if currentNode.parameterHandler == nil {
-				currentNode.parameterHandler = &pathNode{parameterName: v[2:]}
-				//log.Println("Created parameter node: " + v[2:])
-			}
-			currentNode = currentNode.parameterHandler
-			//log.Println("Added paramter path node: " + v[2:])
-
-		} else {
-			// map need to be generated
-			if currentNode.staticRoutes == nil {
-				currentNode.staticRoutes = make(map[string]*pathNode)
-			}
-			// static part of path
-			existNode := currentNode.staticRoutes[v]
-			// check if exist
-			if existNode == nil {
-				currentNode.staticRoutes[v] = &pathNode{}
-				//log.Println("Created node: " + v)
+	for i := 1; i < pathSize; i++ {
+		// do something only when a / is found (or end of url is reached)
+		if path[i] == '/' || i == pathSize-1 {
+			var sch string
+			// grab the paramter from the url with a slice
+			if i != pathSize-1 {
+				sch = path[lastSlash:i]
+			} else {
+				sch = path[lastSlash:]
 			}
 
-			currentNode = currentNode.staticRoutes[v]
-			//log.Println("Added path node: " + v)
+			// check if this is a parameter
+			if len(sch) > 2 && sch[0:2] == "/:" {
+
+				if currentNode.parameterHandler != nil && currentNode.parameterHandler.parameterName != sch[2:] {
+					panic("Paramter name mismatch for route " + path)
+				}
+				//check if there is no handler
+				if currentNode.parameterHandler == nil {
+					currentNode.parameterHandler = &pathNode{parameterName: sch[2:]}
+				}
+				currentNode = currentNode.parameterHandler
+				paramCount++
+			} else {
+				// map need to be generated
+				if currentNode.staticRoutes == nil {
+					currentNode.staticRoutes = make(map[string]*pathNode)
+				}
+				// static part of path
+				existNode := currentNode.staticRoutes[sch]
+				// check if exist
+				if existNode == nil {
+					currentNode.staticRoutes[sch] = &pathNode{}
+				}
+
+				currentNode = currentNode.staticRoutes[sch]
+			}
+
+			// time to assign the handler only to last node
+			if i == pathSize-1 {
+				currentNode.handler = handler
+			}
+			lastSlash = i
 		}
+	}
 
-		// time to assign the handler only to last node
-		if i == len(matches)-1 {
-			currentNode.directMiddlewareChain = MakeMiddlewareChain(middlewares, handler)
-		}
+	if paramCount > r.maxParamters {
+		r.maxParamters = paramCount
 	}
 
 }
 
 // convert method from string into a mapped int
 func methodToInt(method string) int {
-	switch method {
-	case "GET":
-		return httpGET
-	case "POST":
-		return httpPOST
-	case "PUT":
-		return httpPUT
-	case "PATCH":
-		return httpPATCH
-	case "delete":
-		return httpDELETE
-	default:
+	if len(method) < 3 {
 		return -1
 	}
+	c := method[0]
+	if c == 'G' {
+		return httpGET
+	}
+	if c == 'P' {
+		m := method[1]
+		if m == 'O' {
+			return httpPOST
+		}
+		if m == 'U' {
+			return httpPUT
+		}
+		return httpPATCH
+	}
+	if c == 'D' {
+		return httpDELETE
+	}
+	return -1
 }
 
 // parse a request url and call the right handler
-func (r *Router) executeHandler(req *Request) {
+func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 
-	url := req.reader.URL.Path
-	method := methodToInt(req.reader.Method)
+	url := req.URL.Path
+	method := methodToInt(req.Method)
+	var parameters map[string]string
+
 	if method == -1 {
 		//TODO: custimuze error function
-		req.Reply(500, nil, "Unsupported method")
-		log.Fatal("Unsupported method: " + req.reader.Method)
+		w.WriteHeader(400)
+		fmt.Fprintf(w, "Unsupported method")
+		log.Fatal("Unsupported method: " + req.Method)
 		return
 	}
 
-	//log.Println("Executing: " + req.reader.Method + " " + url)
+	//log.Println("Executing: " + req.Reader.Method + " " + url)
 
 	// return index page
 	if len(url) == 0 || url == "/" {
-		r.index(req)
+		r.index(w, req, nil)
 		return
 	}
 
 	currentNode := r.pathTrees[method]
 	lastSlash := 0
 	// start from one to skip the first /
-	for i := 1; i < len(url); i++ {
+	size := len(url)
+	var sch string
+
+	for i := 1; i < size; i++ {
 		// do something only when a / is found (or end of url is reached)
-		if url[i] == '/' || i == len(url)-1 {
-			var sch string
+		if url[i] == '/' || i == size-1 {
 			// grab the paramter from the url with a slice
-			if i != len(url)-1 {
+			if i != size-1 {
 				sch = url[lastSlash:i]
 			} else {
 				sch = url[lastSlash:]
@@ -177,11 +206,14 @@ func (r *Router) executeHandler(req *Request) {
 			} else if currentNode.parameterHandler != nil { // then check if the value could be a paramter
 				currentNode = currentNode.parameterHandler
 				//log.Println("Added new parameter: " + sch[1:])
-				req.SetParameter(currentNode.parameterName, sch[1:])
+				if parameters == nil {
+					parameters = make(map[string]string)
+				}
+				parameters[currentNode.parameterName] = sch[1:]
 			} else { // in nothing is found then we can print a not found message
-				r.fallback(req) // not found any possible match
+				r.fallback(w, req, nil) // not found any possible match
+				//log.Println("Not found: " + sch)
 				return
-				//log.Println("Not found: " + sch[1:])
 			}
 
 			lastSlash = i // update last slash pos after operations
@@ -189,21 +221,19 @@ func (r *Router) executeHandler(req *Request) {
 	}
 
 	// when we are here we are in the last node of the url so we can execute the action
-	if currentNode.directMiddlewareChain != nil {
-		currentNode.directMiddlewareChain.Next(req)
-	} else {
-		log.Fatal("Missing direct handler for " + url)
-	}
+	currentNode.handler(w, req, parameters)
 }
 
 // default error page
-func defaultFallback(req *Request) {
-	req.Reply(404, nil, "Not found")
+func defaultFallback(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
+	w.WriteHeader(404)
+	fmt.Fprintf(w, "Not Found")
 }
 
 // default index page
-func defaultIndex(req *Request) {
-	req.Reply(200, nil, "Welcome to Pantofola-Rest!")
+func defaultIndex(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
+	w.WriteHeader(200)
+	fmt.Fprintf(w, "Welcome to Pantofola-Rest!")
 }
 
 //*********************************************************************************************************************
@@ -211,47 +241,25 @@ func defaultIndex(req *Request) {
 // MakeRouter creates a new router with no middleware and with default index and error pages
 func MakeRouter() *Router {
 	r := &Router{fallback: defaultFallback, index: defaultIndex}
-	r.middlewareChain = MakeMiddlewareChain(nil, r.executeHandler)
 	return r
 }
 
-// Use adds a global middleware to the router
-func (r *Router) Use(middleware Middleware) {
-	r.middlewares = append(r.middlewares, middleware)
-	r.middlewareChain = MakeMiddlewareChain(r.middlewares, r.executeHandler)
-}
-
 // SetFallback sets the default error page used when a element is not found
-func (r *Router) SetFallback(handler RequestHandler) {
+func (r *Router) SetFallback(handler RequestHandler2) {
 	r.fallback = handler
 }
 
 // SetIndex sets the default error page
-func (r *Router) SetIndex(handler RequestHandler) {
+func (r *Router) SetIndex(handler RequestHandler2) {
 	r.index = handler
 }
 
-func (r *Router) GET(path string, middlewares []Middleware, handler RequestHandler) {
-	r.setPath(httpGET, path, middlewares, handler)
+// Handle adds (or reset) a route handler
+func (r *Router) Handle(method, path string, handler RequestHandler2) {
+	r.setPath(methodToInt(method), path, handler)
 }
 
-func (r *Router) POST(path string, middlewares []Middleware, handler RequestHandler) {
-	r.setPath(httpPOST, path, middlewares, handler)
-}
-
-func (r *Router) PUT(path string, middlewares []Middleware, handler RequestHandler) {
-	r.setPath(httpPUT, path, middlewares, handler)
-}
-
-func (r *Router) PATCH(path string, middlewares []Middleware, handler RequestHandler) {
-	r.setPath(httpPATCH, path, middlewares, handler)
-}
-
-func (r *Router) DELETE(path string, middlewares []Middleware, handler RequestHandler) {
-	r.setPath(httpDELETE, path, middlewares, handler)
-}
-
-func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
-	router.middlewareChain.Next(MakeRequest(w, r))
+// ServeHTTP implements http.handler interface to allow this router to be easly used with std server
+func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	r.executeHandler(w, req)
 }
