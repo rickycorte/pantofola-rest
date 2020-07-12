@@ -32,8 +32,8 @@ const (
 	httpTotalMethods = 5
 )
 
-const poolSize = 2000
-const maxPoolSize = 3000
+const poolSize = 500
+const maxPoolSize = 10000
 
 // RequestHandler is a direct function call that handles a http request
 type RequestHandler func(http.ResponseWriter, *http.Request, *ParameterList)
@@ -257,6 +257,7 @@ func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 
 	// when we are here we are in the last node of the url so we can execute the action
 	currentNode.handler(w, req, parameters)
+	r.paramPool.Push(parameters)
 }
 
 //*********************************************************************************************************************

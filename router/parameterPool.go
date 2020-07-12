@@ -108,7 +108,7 @@ func (pp *ParametersPool) Get() *ParameterList {
 // then all the pushed values will be deleted by the garbage collector
 func (pp *ParametersPool) Push(pl *ParameterList) {
 
-	if pp.currentSize < pp.maxSize {
+	if pl != nil && pp.currentSize < pp.maxSize {
 		pp.mutex.Lock()
 		pp.paramStack[pp.currentSize] = pl
 		pp.currentSize++
