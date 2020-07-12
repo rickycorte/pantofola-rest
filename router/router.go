@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 )
 
 const (
@@ -31,31 +32,86 @@ const (
 	httpTotalMethods = 5
 )
 
-// RequestHandler2 is a direct function call that handles a http request
-type RequestHandler2 func(http.ResponseWriter, *http.Request, map[string]string)
+const poolSize = 2000
+const maxPoolSize = 3000
+
+// RequestHandler is a direct function call that handles a http request
+type RequestHandler func(http.ResponseWriter, *http.Request, *ParameterList)
+
+// contrainer of a order list of path nodes all with the same size
+type pathContainer []*pathNode
 
 // Router type holds all the data to handle and correctly route requests to direct
 // handler or other subrouters
 type pathNode struct {
-	staticRoutes     map[string]*pathNode
+	staticRoutes     []pathContainer
 	parameterHandler *pathNode
-	handler          RequestHandler2
-	parameterName    string
+	handler          RequestHandler
+	name             string
 }
 
 // Router is the main block of the api and hold all registered paths
 // this shoul be used instead of the default server mux
 type Router struct {
 	pathTrees    [httpTotalMethods]*pathNode
-	index        RequestHandler2
-	fallback     RequestHandler2
+	index        RequestHandler
+	fallback     RequestHandler
 	maxParamters int
+	paramPool    ParametersPool
 }
 
 //*********************************************************************************************************************
+// pathContainer
+
+// get an element with subpath es: "/api" from a container with binary search
+func (pc *pathContainer) get(subpath string) *pathNode {
+
+	// binary search
+	low := 0
+	high := len(*pc) - 1
+	var mid, cmp int
+
+	for low <= high {
+		mid = (low + high) / 2
+		cmp = strings.Compare(subpath, (*pc)[mid].name)
+		if cmp == 0 {
+			return (*pc)[mid]
+		} else if cmp < 0 {
+			high = mid - 1
+		} else {
+			low = mid + 1
+		}
+	}
+
+	return nil
+}
+
+// create or set an item with specified subpath
+func setStaticNode(pc pathContainer, subpath string, node *pathNode) pathContainer {
+
+	if node == nil {
+		panic("Node must not be nil")
+	}
+
+	node.name = subpath
+
+	// inserion sort
+	pc = append(pc, node)
+	i := 0
+	for i = len(pc) - 1; i > 0 && strings.Compare(pc[i].name, pc[i-1].name) < 0; i-- {
+		temp := pc[i]
+		pc[i] = pc[i-1]
+		pc[i-1] = temp
+	}
+
+	return pc
+}
+
+//*********************************************************************************************************************
+// router
 
 // generate a tree from a path and a method
-func (r *Router) setPath(method int, path string, handler RequestHandler2) {
+func (r *Router) setPath(method int, path string, handler RequestHandler) {
 
 	//log.Println("Parsing " + path)
 
@@ -89,28 +145,31 @@ func (r *Router) setPath(method int, path string, handler RequestHandler2) {
 			// check if this is a parameter
 			if len(sch) > 2 && sch[0:2] == "/:" {
 
-				if currentNode.parameterHandler != nil && currentNode.parameterHandler.parameterName != sch[2:] {
+				if currentNode.parameterHandler != nil && currentNode.parameterHandler.name != sch[2:] {
 					panic("Paramter name mismatch for route " + path)
 				}
 				//check if there is no handler
 				if currentNode.parameterHandler == nil {
-					currentNode.parameterHandler = &pathNode{parameterName: sch[2:]}
+					currentNode.parameterHandler = &pathNode{name: sch[2:]}
 				}
 				currentNode = currentNode.parameterHandler
 				paramCount++
 			} else {
-				// map need to be generated
-				if currentNode.staticRoutes == nil {
-					currentNode.staticRoutes = make(map[string]*pathNode)
+
+				subSize := len(sch)
+				// allocate or reallocate array
+				if currentNode.staticRoutes == nil || subSize >= len(currentNode.staticRoutes) {
+					temp := make([]pathContainer, subSize-len(currentNode.staticRoutes)+5)
+					currentNode.staticRoutes = append(currentNode.staticRoutes, temp...)
 				}
 				// static part of path
-				existNode := currentNode.staticRoutes[sch]
-				// check if exist
-				if existNode == nil {
-					currentNode.staticRoutes[sch] = &pathNode{}
+				container := currentNode.staticRoutes[subSize]
+				// check if exist and add a new element if there is node
+				if container == nil || container.get(sch) == nil {
+					currentNode.staticRoutes[subSize] = setStaticNode(container, sch, &pathNode{})
 				}
 
-				currentNode = currentNode.staticRoutes[sch]
+				currentNode = currentNode.staticRoutes[subSize].get(sch)
 			}
 
 			// time to assign the handler only to last node
@@ -123,33 +182,9 @@ func (r *Router) setPath(method int, path string, handler RequestHandler2) {
 
 	if paramCount > r.maxParamters {
 		r.maxParamters = paramCount
+		r.paramPool.Init(paramCount, poolSize, maxPoolSize)
 	}
 
-}
-
-// convert method from string into a mapped int
-func methodToInt(method string) int {
-	if len(method) < 3 {
-		return -1
-	}
-	c := method[0]
-	if c == 'G' {
-		return httpGET
-	}
-	if c == 'P' {
-		m := method[1]
-		if m == 'O' {
-			return httpPOST
-		}
-		if m == 'U' {
-			return httpPUT
-		}
-		return httpPATCH
-	}
-	if c == 'D' {
-		return httpDELETE
-	}
-	return -1
 }
 
 // parse a request url and call the right handler
@@ -157,7 +192,7 @@ func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 
 	url := req.URL.Path
 	method := methodToInt(req.Method)
-	var parameters map[string]string
+	var parameters *ParameterList
 
 	if method == -1 {
 		//TODO: custimuze error function
@@ -195,7 +230,7 @@ func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 			// first search static nodes
 			var staticNode *pathNode
 			if currentNode.staticRoutes != nil {
-				staticNode = currentNode.staticRoutes[sch]
+				staticNode = currentNode.staticRoutes[len(sch)].get(sch)
 			} else {
 				staticNode = nil
 			}
@@ -205,11 +240,11 @@ func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 				//log.Println("Moved to static node: " + sch)
 			} else if currentNode.parameterHandler != nil { // then check if the value could be a paramter
 				currentNode = currentNode.parameterHandler
-				//log.Println("Added new parameter: " + sch[1:])
+				//log.Println("Added new parameter " + currentNode.name + ": " + sch[1:])
 				if parameters == nil {
-					parameters = make(map[string]string)
+					parameters = r.paramPool.Get()
 				}
-				parameters[currentNode.parameterName] = sch[1:]
+				parameters.Set(currentNode.name, sch[1:])
 			} else { // in nothing is found then we can print a not found message
 				r.fallback(w, req, nil) // not found any possible match
 				//log.Println("Not found: " + sch)
@@ -224,18 +259,6 @@ func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 	currentNode.handler(w, req, parameters)
 }
 
-// default error page
-func defaultFallback(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
-	w.WriteHeader(404)
-	fmt.Fprintf(w, "Not Found")
-}
-
-// default index page
-func defaultIndex(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
-	w.WriteHeader(200)
-	fmt.Fprintf(w, "Welcome to Pantofola-Rest!")
-}
-
 //*********************************************************************************************************************
 
 // MakeRouter creates a new router with no middleware and with default index and error pages
@@ -245,17 +268,17 @@ func MakeRouter() *Router {
 }
 
 // SetFallback sets the default error page used when a element is not found
-func (r *Router) SetFallback(handler RequestHandler2) {
+func (r *Router) SetFallback(handler RequestHandler) {
 	r.fallback = handler
 }
 
 // SetIndex sets the default error page
-func (r *Router) SetIndex(handler RequestHandler2) {
+func (r *Router) SetIndex(handler RequestHandler) {
 	r.index = handler
 }
 
 // Handle adds (or reset) a route handler
-func (r *Router) Handle(method, path string, handler RequestHandler2) {
+func (r *Router) Handle(method, path string, handler RequestHandler) {
 	r.setPath(methodToInt(method), path, handler)
 }
 
