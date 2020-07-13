@@ -17,7 +17,6 @@
 package router
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -53,11 +52,12 @@ type pathNode struct {
 // Router is the main block of the api and hold all registered paths
 // this shoul be used instead of the default server mux
 type Router struct {
-	pathTrees    [httpTotalMethods]*pathNode
-	index        RequestHandler
-	fallback     RequestHandler
-	maxParamters int
-	paramPool    ParametersPool
+	pathTrees        [httpTotalMethods]*pathNode
+	index            RequestHandler
+	fallback         RequestHandler
+	notAllowedMethod RequestHandler
+	maxParamters     int
+	paramPool        ParametersPool
 }
 
 //*********************************************************************************************************************
@@ -113,8 +113,6 @@ func setStaticNode(pc pathContainer, subpath string, node *pathNode) pathContain
 // generate a tree from a path and a method
 func (r *Router) setPath(method int, path string, handler RequestHandler) {
 
-	//log.Println("Parsing " + path)
-
 	currentNode := r.pathTrees[method]
 
 	// create first node if not exist
@@ -125,6 +123,11 @@ func (r *Router) setPath(method int, path string, handler RequestHandler) {
 
 	if method == -1 {
 		panic("Unsupported method for path " + path)
+	}
+
+	if path == "/" {
+		r.index = handler
+		return
 	}
 
 	lastSlash := 0
@@ -195,14 +198,10 @@ func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 	var parameters *ParameterList
 
 	if method == -1 {
-		//TODO: custimuze error function
-		w.WriteHeader(400)
-		fmt.Fprintf(w, "Unsupported method")
-		log.Fatal("Unsupported method: " + req.Method)
+		r.notAllowedMethod(w, req, nil)
+		log.Println("Method not allowed: " + req.Method)
 		return
 	}
-
-	//log.Println("Executing: " + req.Reader.Method + " " + url)
 
 	// return index page
 	if len(url) == 0 || url == "/" {
@@ -211,6 +210,13 @@ func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	currentNode := r.pathTrees[method]
+	// check if there is an handler for the request method
+	if currentNode == nil {
+		r.notAllowedMethod(w, req, nil)
+		log.Println("Method not allowed, no handler set for: " + req.Method)
+		return
+	}
+
 	lastSlash := 0
 	// start from one to skip the first /
 	size := len(url)
@@ -225,29 +231,30 @@ func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 			} else {
 				sch = url[lastSlash:]
 			}
-			//log.Print("Searching node: " + sch)
 
 			// first search static nodes
 			var staticNode *pathNode
 			if currentNode.staticRoutes != nil {
-				staticNode = currentNode.staticRoutes[len(sch)].get(sch)
+				sz := len(sch)
+				if sz < len(currentNode.staticRoutes) {
+					staticNode = currentNode.staticRoutes[sz].get(sch)
+				} else {
+					staticNode = nil
+				}
 			} else {
 				staticNode = nil
 			}
 
 			if staticNode != nil {
 				currentNode = staticNode
-				//log.Println("Moved to static node: " + sch)
 			} else if currentNode.parameterHandler != nil { // then check if the value could be a paramter
 				currentNode = currentNode.parameterHandler
-				//log.Println("Added new parameter " + currentNode.name + ": " + sch[1:])
 				if parameters == nil {
 					parameters = r.paramPool.Get()
 				}
 				parameters.Set(currentNode.name, sch[1:])
 			} else { // in nothing is found then we can print a not found message
 				r.fallback(w, req, nil) // not found any possible match
-				//log.Println("Not found: " + sch)
 				return
 			}
 
@@ -256,7 +263,11 @@ func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// when we are here we are in the last node of the url so we can execute the action
-	currentNode.handler(w, req, parameters)
+	if currentNode.handler != nil {
+		currentNode.handler(w, req, parameters)
+	} else {
+		r.fallback(w, req, nil)
+	}
 	r.paramPool.Push(parameters)
 }
 
@@ -264,23 +275,53 @@ func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 
 // MakeRouter creates a new router with no middleware and with default index and error pages
 func MakeRouter() *Router {
-	r := &Router{fallback: defaultFallback, index: defaultIndex}
+	r := &Router{fallback: defaultFallback, index: defaultIndex, notAllowedMethod: defaultNotAllowedMethod}
 	return r
 }
 
-// SetFallback sets the default error page used when a element is not found
+// SetFallback sets a custom error page used when a element is not found
 func (r *Router) SetFallback(handler RequestHandler) {
 	r.fallback = handler
 }
 
-// SetIndex sets the default error page
-func (r *Router) SetIndex(handler RequestHandler) {
-	r.index = handler
+// SetNotAllowedHandler sets a custom error page used when a unsupported method is received
+func (r *Router) SetNotAllowedHandler(handler RequestHandler) {
+	r.notAllowedMethod = handler
 }
 
 // Handle adds (or reset) a route handler
 func (r *Router) Handle(method, path string, handler RequestHandler) {
 	r.setPath(methodToInt(method), path, handler)
+}
+
+// GET sets a request handler for the specified url only for GET requests
+// this is equivalent to call Handle("GET", ...)
+func (r *Router) GET(path string, handler RequestHandler) {
+	r.setPath(httpGET, path, handler)
+}
+
+// POST sets a request handler for the specified url only for POST requests
+// this is equivalent to call Handle("POST", ...)
+func (r *Router) POST(path string, handler RequestHandler) {
+	r.setPath(httpPOST, path, handler)
+}
+
+// PATCH sets a request handler for the specified url only for PATCH requests
+// this is equivalent to call Handle("PATCH", ...)
+func (r *Router) PATCH(path string, handler RequestHandler) {
+	r.setPath(httpPATCH, path, handler)
+}
+
+// PUT sets a request handler for the specified url only forPUT requests
+// this is equivalent to call Handle("PUT", ...)
+func (r *Router) PUT(path string, handler RequestHandler) {
+	r.setPath(httpPUT, path, handler)
+}
+
+// DELETE sets a request handler for the specified url only for DELETE requests
+// this is equivalent to call Handle("DELETE", ...)
+func (r *Router) DELETE(path string, handler RequestHandler) {
+	r.setPath(httpDELETE, path, handler)
 }
 
 // ServeHTTP implements http.handler interface to allow this router to be easly used with std server

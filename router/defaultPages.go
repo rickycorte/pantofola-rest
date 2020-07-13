@@ -32,3 +32,9 @@ func defaultIndex(w http.ResponseWriter, _ *http.Request, _ *ParameterList) {
 	w.WriteHeader(200)
 	fmt.Fprintf(w, "Welcome to Pantofola-Rest!")
 }
+
+// default not allowed method responce
+func defaultNotAllowedMethod(w http.ResponseWriter, _ *http.Request, _ *ParameterList) {
+	w.WriteHeader(405)
+	fmt.Fprintf(w, "Method Not Allowed")
+}

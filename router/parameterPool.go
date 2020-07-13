@@ -44,6 +44,7 @@ type ParametersPool struct {
 //*********************************************************************************************************************
 // ParamterList
 
+// Set a parameter of the list
 func (pl *ParameterList) Set(key, value string) {
 	pl.data[pl.size].key = key
 	pl.data[pl.size].value = value
