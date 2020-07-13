@@ -18,23 +18,6 @@ All this speed comes to a cost, a good amout of used memory due to the pool and 
 
 Please notice that adding path after initialization is not a good practice because it leads to temporary performance degradation. Inizialitation is not designed to be fast, all the speed comes after the cost of booting everything!
 
-## Road Map
-
-Feature | Version 
---- | ---  
-Fast routing | 0.1.0
-Named parameters | 0.1.0 
-Parameter pool | 0.1.0 
-Custom not found handler | 0.1.0 
-Custom not allowed method handler | 0.1.0 
- | 
-Custom pool settings | TBD
-Panic Handler | TBD
-Path Builder | TBD
-Serve files with caching | TBD
-Built-in middlwares | TBD
-
-
 # Example API
 
 This simple code is just a sample to demostrate how simple and clean is the code to create a REST API with `pantofola-rest`.
@@ -44,19 +27,20 @@ This simple code is just a sample to demostrate how simple and clean is the code
 import (
 	"fmt"
 	"net/http"
-	"github.com/rickycorte/pantofola-rest/router"
+	pantofola "github.com/rickycorte/pantofola-rest/router"
 )
 
 // hello is our first handler!
 func hello(w http.ResponseWriter, _ *http.Request, _ *ParameterList) {
 	w.WriteHeader(200)
-	fmt.Fprintf(w, "HI sen(pi) <3")
+	fmt.Fprintf(w, "Hi sen(pi) <3")
 }
 
 // generic handler for a parametric route that prints available values by name
 func writeData(w http.ResponseWriter, r *http.Request, p *pantofola.ParameterList) {
 	w.WriteHeader(200)
-	fmt.Fprintf(w, r.RequestURI+"\n\nUser: "+p.Get("user")+"\nActivity: "+p.Get("activity")+"\nComment: "+p.Get("comment"))
+	fmt.Fprintf(w, r.RequestURI+"\n\nUser: "+p.Get("user")
+		+"\nActivity: "+p.Get("activity")+"\nComment: "+p.Get("comment"))
 }
 
 func main() {
@@ -67,9 +51,9 @@ func main() {
 	mainRouter.GET("/hello", hello) 
 	
 	// let's make some parametric handlers
-	rout.GET("/activity/:user", writeData)
-	rout.GET("/activity/:user/:activity", writeData)
-	rout.GET("/activity/:user/:activity/comments/:comment", writeData)
+	mainRouter.GET("/activity/:user", writeData)
+	mainRouter.GET("/activity/:user/:activity", writeData)
+	mainRouter.GET("/activity/:user/:activity/comments/:comment", writeData)
 
     http.ListenAndServe(":8080", mainRouter) // start the server end enjoy your REST API!
 }
