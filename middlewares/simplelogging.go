@@ -26,7 +26,7 @@ import (
 
 // SimpleRequestLogging is a single handler middleware that logs base information about the executed handler
 // like the url, request status, process time
-func SimpleRequestLogging(w http.ResponseWriter, r *http.Request, p *router.ParameterList, handler router.RequestHandler) router.RequestHandler {
+func SimpleRequestLogging(handler router.RequestHandler) router.RequestHandler {
 
 	return func(w http.ResponseWriter, r *http.Request, p *router.ParameterList) {
 		start := time.Now().UnixNano()

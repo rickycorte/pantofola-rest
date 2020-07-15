@@ -23,7 +23,7 @@ import (
 )
 
 // NoCache sets the header Cache-Control to no-cache for the path
-func NoCache(w http.ResponseWriter, r *http.Request, p *router.ParameterList, handler router.RequestHandler) router.RequestHandler {
+func NoCache(handler router.RequestHandler) router.RequestHandler {
 
 	return func(w http.ResponseWriter, r *http.Request, p *router.ParameterList) {
 		w.Header().Set("Cache-Control", "no-cache")

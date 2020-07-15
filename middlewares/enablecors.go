@@ -23,7 +23,7 @@ import (
 )
 
 // Cors adds access-control header to allow cors request to this handler
-func Cors(w http.ResponseWriter, r *http.Request, p *router.ParameterList, handler router.RequestHandler) router.RequestHandler {
+func Cors(handler router.RequestHandler) router.RequestHandler {
 
 	return func(w http.ResponseWriter, r *http.Request, p *router.ParameterList) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
