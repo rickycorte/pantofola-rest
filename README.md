@@ -10,7 +10,7 @@ Simple and fast framework to create awesome REST APIs in seconds!
 ## Features
 
 - Incredible fast routing
-- Optimized for dinamic path with multiple parameters
+- Optimized for dynamic path with multiple parameters
 - Namad paramters
 - Parameter pool for 0 allocations and max speed
 
@@ -48,7 +48,7 @@ func main() {
     mainRouter := router.MakeRouter() // create the main router used by our app
 	
 	// we add our handler as the main router
-	mainRouter.GET("/hello", hello) 
+    mainRouter.GET("/hello", hello) 
 	
 	// let's make some parametric handlers
 	mainRouter.GET("/activity/:user", writeData)
