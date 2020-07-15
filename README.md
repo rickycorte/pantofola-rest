@@ -13,6 +13,8 @@ Simple and fast framework to create awesome REST APIs in seconds!
 - Optimized for dynamic path with multiple parameters
 - Namad paramters
 - Parameter pool for 0 allocations and max speed
+- Middlwares (included: cors, no-cache, simple logging)
+- Cascade routers for complex API
 
 All this speed comes to a cost, a good amout of used memory due to the pool and a really slow initialization process.
 

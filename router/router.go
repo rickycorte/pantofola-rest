@@ -55,10 +55,11 @@ type pathNode struct {
 type Router struct {
 	pathTrees        [httpTotalMethods]*pathNode
 	index            RequestHandler
-	fallback         RequestHandler
+	notFound         RequestHandler
 	notAllowedMethod RequestHandler
 	maxParamters     int
 	paramPool        ParametersPool
+	prefix           string
 }
 
 //*********************************************************************************************************************
@@ -208,7 +209,14 @@ func (r *Router) setPath(method int, path string, handler RequestHandler) {
 // parse a request url and call the right handler
 func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 
-	url := req.URL.Path
+	var url string
+	// dont jump away from function if not necessary
+	if r.prefix != "" {
+		url = strings.TrimPrefix(req.URL.Path, r.prefix)
+	} else {
+		url = req.URL.Path
+	}
+
 	method := methodToInt(req.Method)
 	var parameters *ParameterList
 
@@ -223,7 +231,7 @@ func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 		if r.index != nil {
 			r.index(w, req, nil)
 		} else {
-			r.fallback(w, req, nil)
+			r.notFound(w, req, nil)
 		}
 		return
 	}
@@ -274,7 +282,7 @@ func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 				parameters.Set(currentNode.name, sch[1:])
 			} else { // in nothing is found then we can print a not found message
 				r.paramPool.Push(parameters)
-				r.fallback(w, req, nil) // not found any possible match
+				r.notFound(w, req, nil) // not found any possible match
 				return
 			}
 
@@ -286,7 +294,7 @@ func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 	if currentNode.handler != nil {
 		currentNode.handler(w, req, parameters)
 	} else {
-		r.fallback(w, req, nil)
+		r.notFound(w, req, nil)
 	}
 	r.paramPool.Push(parameters)
 }
@@ -295,13 +303,13 @@ func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 
 // MakeRouter creates a new router with no middleware and with default index and error pages
 func MakeRouter() *Router {
-	r := &Router{fallback: defaultFallback, notAllowedMethod: defaultNotAllowedMethod}
+	r := &Router{notFound: defaultFallback, notAllowedMethod: defaultNotAllowedMethod, prefix: ""}
 	return r
 }
 
-// SetFallback sets a custom error page used when a element is not found
-func (r *Router) SetFallback(handler RequestHandler) {
-	r.fallback = handler
+// SetNotFoundHandler sets a custom error page used when a element is not found
+func (r *Router) SetNotFoundHandler(handler RequestHandler) {
+	r.notFound = handler
 }
 
 // SetNotAllowedHandler sets a custom error page used when a unsupported method is received
@@ -347,4 +355,10 @@ func (r *Router) DELETE(path string, handler RequestHandler) {
 // ServeHTTP implements http.handler interface to allow this router to be easly used with std server
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.executeHandler(w, req)
+}
+
+// UsePrefix set a path prefix that should be removed before parsing the request
+// prefix is used mostly by cascade routers
+func (r *Router) UsePrefix(prefix string) {
+	r.prefix = prefix
 }

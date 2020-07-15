@@ -24,7 +24,7 @@ import (
 	"testing"
 )
 
-func runRequest(router *Router, method, path, expected string, t *testing.T) {
+func RunRequest(router *Router, method, path string, status int, expected string, t *testing.T) {
 	recorder := httptest.NewRecorder()
 	req, _ := http.NewRequest(method, path, nil)
 
@@ -32,6 +32,10 @@ func runRequest(router *Router, method, path, expected string, t *testing.T) {
 
 	b, _ := ioutil.ReadAll(recorder.Body)
 	body := string(b)
+
+	if recorder.Code != status {
+		t.Errorf("Mismatch result code of %s. Expected: %v, got: %v", path, status, recorder.Code)
+	}
 
 	if body != expected {
 		t.Errorf("Mismatch in execution of %s. Expected: %s, got: %s", path, expected, body)
@@ -55,10 +59,10 @@ func TestStaticRoutes(t *testing.T) {
 	router.GET("/static/path/to/hello", printHello)
 	router.Handle("GET", "/static/path/hello.html", printHello)
 
-	runRequest(router, "GET", "/", "hello", t)
-	runRequest(router, "GET", "/static/path/to/hello", "hello", t)
-	runRequest(router, "GET", "/static/path/to/hello.html", "Not Found", t)
-	runRequest(router, "GET", "/static/path/hello.html", "hello", t)
+	RunRequest(router, "GET", "/", 200, "hello", t)
+	RunRequest(router, "GET", "/static/path/to/hello", 200, "hello", t)
+	RunRequest(router, "GET", "/static/path/to/hello.html", 404, "Not Found", t)
+	RunRequest(router, "GET", "/static/path/hello.html", 200, "hello", t)
 }
 
 func TestParametricRoutes(t *testing.T) {
@@ -67,9 +71,9 @@ func TestParametricRoutes(t *testing.T) {
 	router.POST("/activity/:user/:activity", writeData)
 	router.GET("/activity/:user/:activity/comments/:comment", writeData)
 
-	runRequest(router, "GET", "/activity/raccoon", "raccoon--", t)
-	runRequest(router, "POST", "/activity/raccoon/123", "raccoon-123-", t)
-	runRequest(router, "GET", "/activity/raccoon/123/comments/456", "raccoon-123-456", t)
+	RunRequest(router, "GET", "/activity/raccoon", 200, "raccoon--", t)
+	RunRequest(router, "POST", "/activity/raccoon/123", 200, "raccoon-123-", t)
+	RunRequest(router, "GET", "/activity/raccoon/123/comments/456", 200, "raccoon-123-456", t)
 }
 
 func TestNotFound(t *testing.T) {
@@ -80,17 +84,17 @@ func TestNotFound(t *testing.T) {
 	router.GET("/activity/:user", writeData)
 
 	// completely wrong path
-	runRequest(router, "GET", "/notFound", "Not Found", t)
+	RunRequest(router, "GET", "/notFound", 404, "Not Found", t)
 
 	// partial match
-	runRequest(router, "GET", "/zello/random", "Not Found", t)
-	runRequest(router, "GET", "/activity", "Not Found", t)
-	runRequest(router, "GET", "/activity/", "Not Found", t)
+	RunRequest(router, "GET", "/zello/random", 404, "Not Found", t)
+	RunRequest(router, "GET", "/activity", 404, "Not Found", t)
+	RunRequest(router, "GET", "/activity/", 404, "Not Found", t)
 
 	//test method with no handlers
-	runRequest(router, "PUT", "/activity/123", "Method Not Allowed", t)
-	runRequest(router, "PATCH", "/activity/123", "Method Not Allowed", t)
-	runRequest(router, "DELETE", "/activity/123", "Method Not Allowed", t)
+	RunRequest(router, "PUT", "/activity/123", 405, "Method Not Allowed", t)
+	RunRequest(router, "PATCH", "/activity/123", 405, "Method Not Allowed", t)
+	RunRequest(router, "DELETE", "/activity/123", 405, "Method Not Allowed", t)
 }
 
 func TestUnsupportedMethod(t *testing.T) {
@@ -100,5 +104,5 @@ func TestUnsupportedMethod(t *testing.T) {
 	router.GET("/hello", printHello)
 	router.GET("/activity/:user", writeData)
 
-	runRequest(router, "HEAD", "/activity/", "Method Not Allowed", t)
+	RunRequest(router, "HEAD", "/activity/", 405, "Method Not Allowed", t)
 }
