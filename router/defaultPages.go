@@ -32,3 +32,9 @@ func defaultNotAllowedMethod(w http.ResponseWriter, _ *http.Request, _ *Paramete
 	w.WriteHeader(405)
 	fmt.Fprintf(w, "Method Not Allowed")
 }
+
+// default panic handler
+func defaultPanicHandler(w http.ResponseWriter, _ *http.Request, _ interface{}) {
+	w.WriteHeader(500)
+	fmt.Fprintf(w, "Something went wrong with your request")
+}

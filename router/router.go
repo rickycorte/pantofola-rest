@@ -38,6 +38,9 @@ const allocationIncrement = 5
 // RequestHandler is a direct function call that handles a http request
 type RequestHandler func(http.ResponseWriter, *http.Request, *ParameterList)
 
+// PanicHandlerr is a direct function call that writes an error to the user when a panic is received (last parameter)
+type PanicHandler func(http.ResponseWriter, *http.Request, interface{})
+
 // contrainer of a order list of path nodes all with the same size
 type pathContainer []*pathNode
 
@@ -57,6 +60,7 @@ type Router struct {
 	index            RequestHandler
 	notFound         RequestHandler
 	notAllowedMethod RequestHandler
+	panicHandler     PanicHandler
 	maxParamters     int
 	paramPool        ParametersPool
 	prefix           string
@@ -303,7 +307,7 @@ func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 
 // MakeRouter creates a new router with no middleware and with default index and error pages
 func MakeRouter() *Router {
-	r := &Router{notFound: defaultFallback, notAllowedMethod: defaultNotAllowedMethod, prefix: ""}
+	r := &Router{notFound: defaultFallback, notAllowedMethod: defaultNotAllowedMethod, prefix: "", panicHandler: defaultPanicHandler}
 	return r
 }
 
@@ -315,6 +319,11 @@ func (r *Router) SetNotFoundHandler(handler RequestHandler) {
 // SetNotAllowedHandler sets a custom error page used when a unsupported method is received
 func (r *Router) SetNotAllowedHandler(handler RequestHandler) {
 	r.notAllowedMethod = handler
+}
+
+// SetPanicHandler sets a custom error page used when panic is received by the router
+func (r *Router) SetPanicHandler(handler PanicHandler) {
+	r.panicHandler = handler
 }
 
 // Handle adds (or reset) a route handler
@@ -354,6 +363,13 @@ func (r *Router) DELETE(path string, handler RequestHandler) {
 
 // ServeHTTP implements http.handler interface to allow this router to be easly used with std server
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Print(err)
+			r.panicHandler(w, req, err)
+		}
+	}()
+
 	r.executeHandler(w, req)
 }
 
