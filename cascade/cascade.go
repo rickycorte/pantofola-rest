@@ -14,21 +14,4 @@
    limitations under the License.
 */
 
-package router
-
-import (
-	"fmt"
-	"net/http"
-)
-
-// default error page
-func defaultFallback(w http.ResponseWriter, _ *http.Request, _ *ParameterList) {
-	w.WriteHeader(404)
-	fmt.Fprintf(w, "Not Found")
-}
-
-// default not allowed method responce
-func defaultNotAllowedMethod(w http.ResponseWriter, _ *http.Request, _ *ParameterList) {
-	w.WriteHeader(405)
-	fmt.Fprintf(w, "Method Not Allowed")
-}
+package cascade
