@@ -166,7 +166,8 @@ func (r *Router) setPath(method int, path string, handler RequestHandler) {
 	}
 
 	if path == "/" {
-		r.index = handler
+		currentNode = setStaticSubnode(currentNode, "/")
+		currentNode.handler = handler
 		return
 	}
 
@@ -230,21 +231,26 @@ func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// return index page
-	if len(url) == 0 || url == "/" {
-		if r.index != nil {
-			r.index(w, req, nil)
-		} else {
-			r.notFound(w, req, nil)
-		}
-		return
-	}
-
 	currentNode := r.pathTrees[method]
 	// check if there is an handler for the request method
 	if currentNode == nil {
 		r.notAllowedMethod(w, req, nil)
 		log.Println("Method not allowed, no handler set for: " + req.Method)
+		return
+	}
+
+	// return index page
+	if len(url) == 0 || url == "/" {
+		staticNode := currentNode.staticRoutes[1]
+
+		if staticNode != nil {
+			ex := staticNode.get("/")
+			if ex != nil {
+				ex.handler(w, req, nil)
+				return
+			}
+		}
+		r.notFound(w, req, nil)
 		return
 	}
 

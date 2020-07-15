@@ -77,7 +77,7 @@ func TestCascadeSearch(t *testing.T) {
 	cascade.Set("/api", apiRouter)
 
 	// main router that is empy
-	RunRequest(cascade, "GET", "/", 404, "Not Found", t)
+	RunRequest(cascade, "GET", "/", 405, "Method Not Allowed", t)
 	RunRequest(cascade, "GET", "/notApi", 405, "Method Not Allowed", t)
 
 	// api requests
@@ -110,7 +110,7 @@ func TestNestedCascade(t *testing.T) {
 	cascade.Set("/api", apiCascade)
 
 	// main router that is empy
-	RunRequest(cascade, "GET", "/", 404, "Not Found", t)
+	RunRequest(cascade, "GET", "/", 405, "Method Not Allowed", t)
 	RunRequest(cascade, "GET", "/notApi", 405, "Method Not Allowed", t)
 
 	// api requests

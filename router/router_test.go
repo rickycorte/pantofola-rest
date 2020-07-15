@@ -48,6 +48,11 @@ func printHello(w http.ResponseWriter, _ *http.Request, _ *ParameterList) {
 	fmt.Fprintf(w, "hello")
 }
 
+func printMethod(w http.ResponseWriter, r *http.Request, _ *ParameterList) {
+	w.WriteHeader(200)
+	fmt.Fprintf(w, r.Method)
+}
+
 func writeData(w http.ResponseWriter, r *http.Request, p *ParameterList) {
 	w.WriteHeader(200)
 	fmt.Fprintf(w, p.Get("user")+"-"+p.Get("activity")+"-"+p.Get("comment"))
@@ -105,4 +110,19 @@ func TestUnsupportedMethod(t *testing.T) {
 	router.GET("/activity/:user", writeData)
 
 	RunRequest(router, "HEAD", "/activity/", 405, "Method Not Allowed", t)
+}
+
+func TestIndexMethods(t *testing.T) {
+	router := MakeRouter()
+	router.GET("/", printMethod)
+	router.POST("/", printMethod)
+	router.PUT("/", printMethod)
+	router.PATCH("/", printMethod)
+	router.DELETE("/", printMethod)
+
+	RunRequest(router, "GET", "/", 200, "GET", t)
+	RunRequest(router, "POST", "/", 200, "POST", t)
+	RunRequest(router, "PUT", "/", 200, "PUT", t)
+	RunRequest(router, "PATCH", "/", 200, "PATCH", t)
+	RunRequest(router, "DELETE", "/", 200, "DELETE", t)
 }

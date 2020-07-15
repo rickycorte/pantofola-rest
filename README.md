@@ -15,6 +15,7 @@ Simple and fast framework to create awesome REST APIs in seconds!
 - Parameter pool for 0 allocations and max speed
 - Middlwares (included: cors, no-cache, simple logging)
 - Cascade routers for complex API
+- Panic handler
 
 All this speed comes to a cost, a good amout of used memory due to the pool and a really slow initialization process.
 
