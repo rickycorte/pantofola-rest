@@ -81,15 +81,6 @@ func (pp *ParametersPool) Init(maxParameters, size, maxSize int) {
 	pp.mutex = &sync.Mutex{}
 }
 
-// SetParamterSize sets the size of every paramter list
-// please notice that this function  deletes the allocated pool!
-func (pp *ParametersPool) SetParamterSize(size int) {
-	pp.currentSize = 0
-	pp.maxSize = 0
-	pp.maxParameters = size
-	pp.paramStack = nil
-}
-
 // Get a parameter array from the pool (or allocate a new one if none is available)
 func (pp *ParametersPool) Get() *ParameterList {
 	// first give a pre allocated values if there is any

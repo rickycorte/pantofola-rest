@@ -249,6 +249,9 @@ func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 				ex.handler(w, req, nil)
 				return
 			}
+		} else if pn := currentNode.parameterHandler; pn != nil { // paramter node is set
+			pn.handler(w, req, nil)
+			return
 		}
 		r.notFound(w, req, nil)
 		return
@@ -289,7 +292,12 @@ func (r *Router) executeHandler(w http.ResponseWriter, req *http.Request) {
 				if parameters == nil {
 					parameters = r.paramPool.Get()
 				}
-				parameters.Set(currentNode.name, sch[1:])
+				if currentNode.name == "*" { // * parameter require that everything is matched
+					parameters.Set(currentNode.name, url[lastSlash:])
+					break // they also must stop the cycle and jump to handlers execution
+				} else {
+					parameters.Set(currentNode.name, sch[1:])
+				}
 			} else { // in nothing is found then we can print a not found message
 				r.paramPool.Push(parameters)
 				r.notFound(w, req, nil) // not found any possible match
@@ -381,6 +389,8 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 // UsePrefix set a path prefix that should be removed before parsing the request
 // prefix is used mostly by cascade routers
+// Note: this allows to IGNIORE one prefix, for example if we set /api as prefix
+// /api/endpoint becomes /endpoint!
 func (r *Router) UsePrefix(prefix string) {
 	r.prefix = prefix
 }

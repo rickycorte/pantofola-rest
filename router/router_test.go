@@ -58,6 +58,19 @@ func writeData(w http.ResponseWriter, r *http.Request, p *ParameterList) {
 	fmt.Fprintf(w, p.Get("user")+"-"+p.Get("activity")+"-"+p.Get("comment"))
 }
 
+func panicHandler(w http.ResponseWriter, _ *http.Request, _ *ParameterList) {
+	panic("PANIC")
+}
+
+func fw(w http.ResponseWriter, r *http.Request, p *ParameterList) {
+	w.WriteHeader(200)
+	path := ""
+	if p != nil {
+		path = p.Get("*")
+	}
+	fmt.Fprintf(w, "Got: "+path)
+}
+
 func TestStaticRoutes(t *testing.T) {
 	router := MakeRouter()
 	router.Handle("GET", "/", printHello)
@@ -125,4 +138,33 @@ func TestIndexMethods(t *testing.T) {
 	RunRequest(router, "PUT", "/", 200, "PUT", t)
 	RunRequest(router, "PATCH", "/", 200, "PATCH", t)
 	RunRequest(router, "DELETE", "/", 200, "DELETE", t)
+}
+
+func TestPanicHandler(t *testing.T) {
+	router := MakeRouter()
+	router.GET("/panic", panicHandler)
+
+	RunRequest(router, "GET", "/panic", 500, "Something went wrong with your request", t)
+}
+
+func TestAsteriscParamter(t *testing.T) {
+	router := MakeRouter()
+	router.GET("/:*", fw)
+	router.GET("/hello", printHello)
+
+	RunRequest(router, "GET", "/", 200, "Got: ", t)
+	RunRequest(router, "GET", "/1234", 200, "Got: /1234", t)
+	RunRequest(router, "GET", "/hello", 200, "hello", t)
+}
+
+func TestPrefix(t *testing.T) {
+	router := MakeRouter()
+	router.GET("/a", printHello)
+	router.UsePrefix("/api")
+	// this router should handle /api/a is if is was only /a because prefix is ignored
+
+	RunRequest(router, "GET", "/", 404, "Not Found", t)
+
+	RunRequest(router, "GET", "/a", 200, "hello", t)
+	RunRequest(router, "GET", "/api/a", 200, "hello", t)
 }
